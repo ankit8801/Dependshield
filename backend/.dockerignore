@@ -1,0 +1,25 @@
+# Backend .dockerignore
+# Excludes files that should not be sent to the Docker build context.
+
+node_modules/
+npm-debug.log*
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Test artifacts
+coverage/
+.nyc_output/
+tests/
+
+# Temporary data
+uploads/
+tmp/
+temp/
+
+# Development files
+*.md
+.git/
+.gitignore

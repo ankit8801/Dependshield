@@ -1,0 +1,177 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  projects     Project[]
+
+  @@map("users")
+}
+
+model Project {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  name          String
+  description   String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scans         Scan[]
+  repository    Repository?
+
+  @@map("projects")
+}
+
+enum SourceType {
+  GITHUB
+  ZIP
+}
+
+model Repository {
+  id          String     @id @default(uuid()) @db.Uuid
+  projectId   String     @unique @map("project_id") @db.Uuid
+  type        SourceType @default(GITHUB)
+  url         String?
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("repositories")
+}
+
+enum ScanStatus {
+  QUEUED
+  INGESTING
+  ANALYZING
+  EXTRACTING
+  SBOM_GENERATING
+  VULNERABILITY_ANALYSIS
+  MATCHING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+model Scan {
+  id           String     @id @default(uuid()) @db.Uuid
+  projectId    String     @map("project_id") @db.Uuid
+  status       ScanStatus @default(QUEUED)
+  errorMessage String?    @map("error_message")
+  riskScore    Float?     @map("risk_score")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  completedAt  DateTime?  @map("completed_at")
+
+  project      Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sbom         Sbom?
+  dependencies Dependency[]
+
+  @@map("scans")
+}
+
+model Sbom {
+  id               String   @id @default(uuid()) @db.Uuid
+  scanId           String   @unique @map("scan_id") @db.Uuid
+  cycloneDxContent Json     @map("cyclone_dx_content")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  scan             Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+
+  @@map("sboms")
+}
+
+model Dependency {
+  id        String  @id @default(uuid()) @db.Uuid
+  scanId    String  @map("scan_id") @db.Uuid
+  name      String?
+  version   String?
+  purl      String
+  isDirect  Boolean? @map("is_direct")
+  ecosystem String?
+
+  scan      Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  matches   ScanVulnerabilityMatch[]
+
+  @@map("dependencies")
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+  UNASSIGNED
+}
+
+model Vulnerability {
+  id                  String     @id @default(uuid()) @db.Uuid
+  cveId               String     @unique @map("cve_id")
+  description         String?
+  severity            Severity   @default(UNASSIGNED)
+  cvssScore           Decimal?   @map("cvss_score") @db.Decimal(3, 1)
+  cvssVersion         String?    @map("cvss_version")
+  cvssVector          String?    @map("cvss_vector")
+  publishedAt         DateTime?  @map("published_at")
+  modifiedAt          DateTime?  @map("modified_at")
+  remediationGuidance String?    @map("remediation_guidance")
+  source              String     @default("NVD")
+
+  affectedSoftware    VulnerableSoftware[]
+  matches             ScanVulnerabilityMatch[]
+
+  @@map("vulnerabilities")
+}
+
+model VulnerableSoftware {
+  id                    String @id @default(uuid()) @db.Uuid
+  vulnerabilityId       String @map("vulnerability_id") @db.Uuid
+  vendor                String?
+  product               String?
+  versionStartIncluding String? @map("version_start_including")
+  versionStartExcluding String? @map("version_start_excluding")
+  versionEndExcluding   String? @map("version_end_excluding")
+  versionEndIncluding   String? @map("version_end_including")
+
+  vulnerability         Vulnerability @relation(fields: [vulnerabilityId], references: [id], onDelete: Cascade)
+
+  @@index([vendor, product])
+  @@map("vulnerable_software")
+}
+
+model SyncState {
+  id           String   @id @default("NVD")
+  lastSyncDate DateTime @map("last_sync_date")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("sync_states")
+}
+
+model ScanVulnerabilityMatch {
+  id              String   @id @default(uuid()) @db.Uuid
+  dependencyId    String   @map("dependency_id") @db.Uuid
+  vulnerabilityId String   @map("vulnerability_id") @db.Uuid
+  matchType       String?  @map("match_type")
+  
+  // Risk Scoring Fields
+  riskScore       Float?   @map("risk_score")
+  severityWeight  Float?   @map("severity_weight")
+  contextWeight   Float?   @map("context_weight")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  dependency      Dependency    @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+  vulnerability   Vulnerability @relation(fields: [vulnerabilityId], references: [id], onDelete: Cascade)
+
+  @@map("scan_vulnerability_matches")
+}

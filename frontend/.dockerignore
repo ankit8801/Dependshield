@@ -1,0 +1,16 @@
+# Frontend .dockerignore
+# Excludes files that should not be sent to the Docker build context.
+
+node_modules/
+npm-debug.log*
+dist/
+
+# Secrets and env
+.env
+.env.*
+!.env.example
+
+# Development files
+*.md
+.git/
+.gitignore
